@@ -49,7 +49,9 @@ class TestResolveService(unittest.TestCase):
             r = resolve_service("auto")
         self.assertEqual(r.name, "grok")
         self.assertEqual(r.reason, "grok-oauth")
-        self.assertIsNone(r.envs.get("GROK_API_KEY"))
+        self.assertEqual(r.envs.get("GROK_PREFER_OAUTH"), "1")
+        # Must not null out API keys (config pollution).
+        self.assertNotIn("GROK_API_KEY", r.envs)
 
     def test_auto_falls_back_to_openai_codex(self):
         with (

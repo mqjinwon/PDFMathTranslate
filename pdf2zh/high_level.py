@@ -186,6 +186,12 @@ def translate_stream(
     ignore_cache: bool = False,
     **kwarg: Any,
 ):
+    from pdf2zh.service_chain import resolve_service
+
+    resolved = resolve_service(service, envs=envs or {})
+    service = resolved.service_string()
+    envs = {**(envs or {}), **resolved.envs}
+
     font_list = [("tiro", None)]
 
     font_path = download_remote_fonts(lang_out.lower())
@@ -323,6 +329,13 @@ def translate(
 ):
     if not files:
         raise PDFValueError("No files to process.")
+
+    # Resolve auto once at the public API boundary; lower layers get a concrete service.
+    from pdf2zh.service_chain import resolve_service
+
+    resolved = resolve_service(service, envs=envs or {})
+    service = resolved.service_string()
+    envs = {**(envs or {}), **resolved.envs}
 
     missing_files = check_files(files)
 

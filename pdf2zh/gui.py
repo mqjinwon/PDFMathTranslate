@@ -19,34 +19,8 @@ from pdf2zh import __version__
 from pdf2zh.high_level import translate
 from pdf2zh.doclayout import ModelInstance
 from pdf2zh.config import ConfigManager
-from pdf2zh.translator import (
-    AnythingLLMTranslator,
-    AzureOpenAITranslator,
-    AzureTranslator,
-    BaseTranslator,
-    BingTranslator,
-    DeepLTranslator,
-    DeepLXTranslator,
-    DifyTranslator,
-    ArgosTranslator,
-    GeminiTranslator,
-    GoogleTranslator,
-    MiniMaxTranslator,
-    ModelScopeTranslator,
-    OllamaTranslator,
-    OpenAITranslator,
-    OpenAICodexTranslator,
-    SiliconTranslator,
-    TencentTranslator,
-    XinferenceTranslator,
-    ZhipuTranslator,
-    GrokTranslator,
-    GroqTranslator,
-    DeepseekTranslator,
-    OpenAIlikedTranslator,
-    QwenMtTranslator,
-    X302AITranslator,
-)
+from pdf2zh.registry import build_translator, gui_service_map
+from pdf2zh.translator import BaseTranslator, OpenAITranslator
 from babeldoc.docvision.doclayout import OnnxModel
 from babeldoc import __version__ as babeldoc_version
 
@@ -71,34 +45,8 @@ class _LazyModel:
 
 
 BABELDOC_MODEL = _LazyModel()
-# The following variables associate strings with translators
-service_map: dict[str, BaseTranslator] = {
-    "Grok": GrokTranslator,
-    "OpenAI Codex (OAuth)": OpenAICodexTranslator,
-    "OpenAI": OpenAITranslator,
-    "Google": GoogleTranslator,
-    "Bing": BingTranslator,
-    "DeepL": DeepLTranslator,
-    "DeepLX": DeepLXTranslator,
-    "Ollama": OllamaTranslator,
-    "Xinference": XinferenceTranslator,
-    "AzureOpenAI": AzureOpenAITranslator,
-    "Zhipu": ZhipuTranslator,
-    "ModelScope": ModelScopeTranslator,
-    "Silicon": SiliconTranslator,
-    "Gemini": GeminiTranslator,
-    "Azure": AzureTranslator,
-    "Tencent": TencentTranslator,
-    "Dify": DifyTranslator,
-    "AnythingLLM": AnythingLLMTranslator,
-    "Argos Translate": ArgosTranslator,
-    "Groq": GroqTranslator,
-    "DeepSeek": DeepseekTranslator,
-    "MiniMax": MiniMaxTranslator,
-    "OpenAI-liked": OpenAIlikedTranslator,
-    "Ali Qwen-Translation": QwenMtTranslator,
-    "302.AI": X302AITranslator,
-}
+# Label → translator class (single registry under the hood)
+service_map: dict[str, type[BaseTranslator]] = gui_service_map()
 
 # The following variables associate strings with specific languages
 lang_map = {
@@ -128,8 +76,10 @@ flag_demo = False
 # Limit resources
 if ConfigManager.get("PDF2ZH_DEMO"):
     flag_demo = True
+    from pdf2zh.registry import get_translator_class
+
     service_map = {
-        "Google": GoogleTranslator,
+        "Google": get_translator_class("google"),
     }
     page_map = {
         "First": [0],
@@ -405,44 +355,14 @@ def babeldoc_translate_file(**kwargs):
     from babeldoc.high_level import async_translate as babeldoc_translate
     from babeldoc.translation_config import TranslationConfig as YadtConfig
 
-    for translator in [
-        GoogleTranslator,
-        BingTranslator,
-        DeepLTranslator,
-        DeepLXTranslator,
-        OllamaTranslator,
-        XinferenceTranslator,
-        AzureOpenAITranslator,
-        OpenAITranslator,
-        OpenAICodexTranslator,
-        ZhipuTranslator,
-        ModelScopeTranslator,
-        SiliconTranslator,
-        GeminiTranslator,
-        AzureTranslator,
-        TencentTranslator,
-        DifyTranslator,
-        AnythingLLMTranslator,
-        ArgosTranslator,
-        GrokTranslator,
-        GroqTranslator,
-        DeepseekTranslator,
-        OpenAIlikedTranslator,
-        QwenMtTranslator,
-        X302AITranslator,
-    ]:
-        if kwargs["service"] == translator.name:
-            translator = translator(
-                kwargs["lang_in"],
-                kwargs["lang_out"],
-                "",
-                envs=kwargs["envs"],
-                prompt=kwargs["prompt"],
-                ignore_cache=kwargs["ignore_cache"],
-            )
-            break
-    else:
-        raise ValueError("Unsupported translation service")
+    translator = build_translator(
+        kwargs["service"],
+        kwargs["lang_in"],
+        kwargs["lang_out"],
+        envs=kwargs.get("envs") or {},
+        prompt=kwargs.get("prompt"),
+        ignore_cache=kwargs.get("ignore_cache", False),
+    )
     import asyncio
     from babeldoc.main import create_progress_handler
 

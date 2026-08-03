@@ -359,17 +359,20 @@ def main(args: Optional[List[str]] = None) -> int:
             else parsed_args.prompt
         )
 
+    from pdf2zh.service_chain import resolve_service
+
+    resolved = resolve_service(parsed_args.service, envs={})
     request = TranslateRequest(
         files=parsed_args.files,
         output=parsed_args.output,
         pages=parsed_args.pages,
         lang_in=parsed_args.lang_in,
         lang_out=parsed_args.lang_out,
-        service=parsed_args.service,
+        service=resolved.service_string(),
         thread=parsed_args.thread,
         vfont=parsed_args.vfont,
         vchar=parsed_args.vchar,
-        envs={},
+        envs=dict(resolved.envs),
         prompt=prompt_text,
         skip_subset_fonts=parsed_args.skip_subset_fonts,
         ignore_cache=parsed_args.ignore_cache,
@@ -413,77 +416,16 @@ def yadt_main(parsed_args) -> int:
         except Exception:
             raise ValueError("prompt error.")
 
-    from pdf2zh.service_chain import resolve_service
-    from pdf2zh.translator import (
-        AzureOpenAITranslator,
-        GoogleTranslator,
-        BingTranslator,
-        DeepLTranslator,
-        DeepLXTranslator,
-        OllamaTranslator,
-        OpenAITranslator,
-        OpenAICodexTranslator,
-        ZhipuTranslator,
-        ModelScopeTranslator,
-        SiliconTranslator,
-        GeminiTranslator,
-        AzureTranslator,
-        TencentTranslator,
-        DifyTranslator,
-        AnythingLLMTranslator,
-        XinferenceTranslator,
-        ArgosTranslator,
-        GrokTranslator,
-        GroqTranslator,
-        DeepseekTranslator,
-        OpenAIlikedTranslator,
-        QwenMtTranslator,
-        X302AITranslator,
+    from pdf2zh.registry import build_translator
+
+    translator = build_translator(
+        parsed_args.service,
+        lang_in,
+        lang_out,
+        envs=envs,
+        prompt=prompt,
+        ignore_cache=ignore_cache,
     )
-
-    resolved = resolve_service(parsed_args.service, envs=envs)
-    service_name = resolved.name
-    service_model = resolved.model
-    envs = {**envs, **resolved.envs}
-
-    for translator in [
-        GoogleTranslator,
-        BingTranslator,
-        DeepLTranslator,
-        DeepLXTranslator,
-        OllamaTranslator,
-        XinferenceTranslator,
-        AzureOpenAITranslator,
-        OpenAITranslator,
-        OpenAICodexTranslator,
-        ZhipuTranslator,
-        ModelScopeTranslator,
-        SiliconTranslator,
-        GeminiTranslator,
-        AzureTranslator,
-        TencentTranslator,
-        DifyTranslator,
-        AnythingLLMTranslator,
-        ArgosTranslator,
-        GrokTranslator,
-        GroqTranslator,
-        DeepseekTranslator,
-        OpenAIlikedTranslator,
-        QwenMtTranslator,
-        X302AITranslator,
-    ]:
-        if service_name == translator.name:
-            translator = translator(
-                lang_in,
-                lang_out,
-                service_model,
-                envs=envs,
-                prompt=prompt,
-                ignore_cache=ignore_cache,
-            )
-            break
-    else:
-        raise ValueError("Unsupported translation service")
     import asyncio
 
     for file in untranlate_file:

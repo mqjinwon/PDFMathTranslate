@@ -89,8 +89,8 @@ def resolve_service(
 
     # 1) Grok OAuth
     if _grok_oauth_available():
-        # Force OAuth path even if GROK_API_KEY is set in the environment.
-        chain_envs = {**envs, "GROK_API_KEY": None}
+        # Prefer OAuth without nulling a user API key in persisted config.
+        chain_envs = {**envs, "GROK_PREFER_OAUTH": "1"}
         resolved = ResolvedService(
             name="grok",
             model=model or DEFAULT_GROK_OAUTH_MODEL,

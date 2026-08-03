@@ -15,34 +15,7 @@ from pdfminer.utils import apply_matrix_pt, mult_matrix
 from pymupdf import Font
 from tenacity import retry, wait_fixed
 
-from pdf2zh.translator import (
-    AnythingLLMTranslator,
-    ArgosTranslator,
-    AzureOpenAITranslator,
-    AzureTranslator,
-    BaseTranslator,
-    BingTranslator,
-    DeepLTranslator,
-    DeepLXTranslator,
-    DeepseekTranslator,
-    DifyTranslator,
-    GeminiTranslator,
-    GoogleTranslator,
-    GrokTranslator,
-    GroqTranslator,
-    MiniMaxTranslator,
-    ModelScopeTranslator,
-    OllamaTranslator,
-    OpenAIlikedTranslator,
-    OpenAICodexTranslator,
-    OpenAITranslator,
-    QwenMtTranslator,
-    SiliconTranslator,
-    TencentTranslator,
-    XinferenceTranslator,
-    ZhipuTranslator,
-    X302AITranslator,
-)
+from pdf2zh.translator import BaseTranslator
 
 log = logging.getLogger(__name__)
 
@@ -129,28 +102,6 @@ class Paragraph:
         self.brk: bool = brk  # 换行标记
 
 
-# Section headings that mark the start of untranslated bibliography content.
-REFERENCE_SECTION_RE = re.compile(
-    r"^\s*(?:"
-    r"(?:\d+|[IVXLC]+)\s*[.\s]+)?(?:references?|bibliography|works\s+cited|"
-    r"참고\s*문헌|参考文献|參考文獻)"
-    r"\s*\.?\s*$",
-    re.IGNORECASE,
-)
-
-# After References, many papers put Appendix / Supplementary — resume translation.
-# Matches: "Appendix", "Appendix A", "A Appendix", "A. Appendix", "부록", etc.
-APPENDIX_SECTION_RE = re.compile(
-    r"^\s*(?:"
-    r"(?:appendix|appendices|supplementary(?:\s+materials?)?|"
-    r"부록|附录|附錄)"
-    r"(?:\s*[:.\-–—]?\s*.*)?|"
-    r"[A-Z](?:\s*[.\-–—]\s*|\s+)appendix(?:\s*[:.\-–—]?\s*.*)?"
-    r")\s*$",
-    re.IGNORECASE,
-)
-
-
 # fmt: off
 class TranslateConverter(PDFConverterEx):
     def __init__(
@@ -178,23 +129,19 @@ class TranslateConverter(PDFConverterEx):
         self.noto_name = noto_name
         self.noto = noto
         self.skip_references = skip_references
-        # Sticky across pages until Appendix / supplementary resumes translation.
-        self._in_references = False
-        self.translator: BaseTranslator = None
-        if not envs:
-            envs = {}
-        from pdf2zh.service_chain import resolve_service
+        from pdf2zh.section_policy import SectionState
+        from pdf2zh.registry import build_translator
 
-        resolved = resolve_service(service, envs=envs)
-        service_name = resolved.name
-        service_model = resolved.model
-        envs = {**envs, **resolved.envs}
-        for translator in [GoogleTranslator, BingTranslator, DeepLTranslator, DeepLXTranslator, OllamaTranslator, XinferenceTranslator, AzureOpenAITranslator,
-                           OpenAITranslator, OpenAICodexTranslator, ZhipuTranslator, ModelScopeTranslator, SiliconTranslator, GeminiTranslator, AzureTranslator, TencentTranslator, DifyTranslator, AnythingLLMTranslator, ArgosTranslator, GrokTranslator, GroqTranslator, DeepseekTranslator, MiniMaxTranslator, OpenAIlikedTranslator, QwenMtTranslator, X302AITranslator]:
-            if service_name == translator.name:
-                self.translator = translator(lang_in, lang_out, service_model, envs=envs, prompt=prompt, ignore_cache=ignore_cache)
-        if not self.translator:
-            raise ValueError("Unsupported translation service")
+        # Sticky across pages until Appendix / supplementary resumes translation.
+        self._section_state = SectionState()
+        self.translator: BaseTranslator = build_translator(
+            service,
+            lang_in,
+            lang_out,
+            envs=envs or {},
+            prompt=prompt,
+            ignore_cache=ignore_cache,
+        )
 
     def receive_layout(self, ltpage: LTPage):
         # 段落
@@ -374,22 +321,18 @@ class TranslateConverter(PDFConverterEx):
         # B. 段落翻译
         log.debug("\n==========[SSTACK]==========\n")
 
-        skip_flags: list[bool] = []
-        for s in sstk:
-            stripped = s.strip()
-            if self.skip_references:
-                if REFERENCE_SECTION_RE.match(stripped):
-                    if not self._in_references:
-                        log.info(
-                            "Skipping translation for references/bibliography section"
-                        )
-                    self._in_references = True
-                elif self._in_references and APPENDIX_SECTION_RE.match(stripped):
-                    log.info(
-                        "Resuming translation at appendix/supplementary section"
-                    )
-                    self._in_references = False
-            skip_flags.append(bool(self.skip_references and self._in_references))
+        from pdf2zh.section_policy import skip_flags_for_paragraphs
+
+        prev_in_refs = self._section_state.in_references
+        skip_flags, self._section_state = skip_flags_for_paragraphs(
+            sstk,
+            self._section_state,
+            skip_references=self.skip_references,
+        )
+        if self.skip_references and not prev_in_refs and self._section_state.in_references:
+            log.info("Skipping translation for references/bibliography section")
+        if self.skip_references and prev_in_refs and not self._section_state.in_references:
+            log.info("Resuming translation at appendix/supplementary section")
 
         @retry(wait=wait_fixed(1))
         def worker(item: tuple[str, bool]):  # 多线程翻译

@@ -22,7 +22,8 @@ from pdf2zh.auth.grok_oauth import (
     refresh_grok_credentials,
     save_grok_credentials,
 )
-from pdf2zh.translator import OpenAICodexTranslator, GrokTranslator
+from pdf2zh.openai_codex import OpenAICodexTranslator
+from pdf2zh.translator import GrokTranslator
 from pdf2zh.config import ConfigManager
 
 

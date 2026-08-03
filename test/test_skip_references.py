@@ -2,7 +2,13 @@
 
 import unittest
 
-from pdf2zh.converter import APPENDIX_SECTION_RE, REFERENCE_SECTION_RE
+from pdf2zh.section_policy import (
+    APPENDIX_SECTION_RE,
+    REFERENCE_SECTION_RE,
+    SectionState,
+    apply_section_policy,
+    skip_flags_for_paragraphs,
+)
 
 
 class TestReferenceSectionDetection(unittest.TestCase):
@@ -52,6 +58,41 @@ class TestAppendixSectionDetection(unittest.TestCase):
             "A.3 Domain Randomizations",
         ]:
             self.assertFalse(APPENDIX_SECTION_RE.match(s), s)
+
+
+class TestSectionStateMachine(unittest.TestCase):
+    def test_references_then_appendix_sequence(self):
+        paras = [
+            "Introduction body text about methods.",
+            "References",
+            "[1] A. Smith. Paper title. 2020.",
+            "[2] B. Jones. Other paper. 2021.",
+            "A Appendix",
+            "Appendix details and extra experiments.",
+        ]
+        flags, state = skip_flags_for_paragraphs(paras)
+        self.assertEqual(
+            flags,
+            [False, True, True, True, False, False],
+        )
+        self.assertFalse(state.in_references)
+
+    def test_sticky_across_calls(self):
+        st = SectionState()
+        skip, st = apply_section_policy("References", st)
+        self.assertTrue(skip)
+        self.assertTrue(st.in_references)
+        skip, st = apply_section_policy("[15] Foo et al.", st)
+        self.assertTrue(skip)
+        skip, st = apply_section_policy("Appendix", st)
+        self.assertFalse(skip)
+        self.assertFalse(st.in_references)
+
+    def test_disabled(self):
+        flags, _ = skip_flags_for_paragraphs(
+            ["References", "[1] X"], skip_references=False
+        )
+        self.assertEqual(flags, [False, False])
 
 
 if __name__ == "__main__":
