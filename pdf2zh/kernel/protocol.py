@@ -15,7 +15,7 @@ class TranslateRequest:
     files: list[str]
     lang_in: str = "en"
     lang_out: str = "zh"
-    service: str = "google"
+    service: str = "auto"
     pages: Optional[list[int] | str] = None
     output: str = ""
     thread: int = 4

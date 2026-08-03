@@ -44,7 +44,7 @@ def create_mcp_app() -> FastMCP:
                 file_bytes,
                 lang_in=lang_in,
                 lang_out=lang_out,
-                service="google",
+                service="auto",
                 model=ModelInstance.value,
                 thread=4,
             )

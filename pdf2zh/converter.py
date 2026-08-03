@@ -34,6 +34,7 @@ from pdf2zh.translator import (
     ModelScopeTranslator,
     OllamaTranslator,
     OpenAIlikedTranslator,
+    OpenAICodexTranslator,
     OpenAITranslator,
     QwenMtTranslator,
     SiliconTranslator,
@@ -128,6 +129,28 @@ class Paragraph:
         self.brk: bool = brk  # 换行标记
 
 
+# Section headings that mark the start of untranslated bibliography content.
+REFERENCE_SECTION_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:\d+|[IVXLC]+)\s*[.\s]+)?(?:references?|bibliography|works\s+cited|"
+    r"참고\s*문헌|参考文献|參考文獻)"
+    r"\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+# After References, many papers put Appendix / Supplementary — resume translation.
+# Matches: "Appendix", "Appendix A", "A Appendix", "A. Appendix", "부록", etc.
+APPENDIX_SECTION_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:appendix|appendices|supplementary(?:\s+materials?)?|"
+    r"부록|附录|附錄)"
+    r"(?:\s*[:.\-–—]?\s*.*)?|"
+    r"[A-Z](?:\s*[.\-–—]\s*|\s+)appendix(?:\s*[:.\-–—]?\s*.*)?"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
 # fmt: off
 class TranslateConverter(PDFConverterEx):
     def __init__(
@@ -145,6 +168,7 @@ class TranslateConverter(PDFConverterEx):
         envs: Dict = None,
         prompt: Template = None,
         ignore_cache: bool = False,
+        skip_references: bool = True,
     ) -> None:
         super().__init__(rsrcmgr)
         self.vfont = vfont
@@ -153,15 +177,20 @@ class TranslateConverter(PDFConverterEx):
         self.layout = layout
         self.noto_name = noto_name
         self.noto = noto
+        self.skip_references = skip_references
+        # Sticky across pages until Appendix / supplementary resumes translation.
+        self._in_references = False
         self.translator: BaseTranslator = None
-        # e.g. "ollama:gemma2:9b" -> ["ollama", "gemma2:9b"]
-        param = service.split(":", 1)
-        service_name = param[0]
-        service_model = param[1] if len(param) > 1 else None
         if not envs:
             envs = {}
+        from pdf2zh.service_chain import resolve_service
+
+        resolved = resolve_service(service, envs=envs)
+        service_name = resolved.name
+        service_model = resolved.model
+        envs = {**envs, **resolved.envs}
         for translator in [GoogleTranslator, BingTranslator, DeepLTranslator, DeepLXTranslator, OllamaTranslator, XinferenceTranslator, AzureOpenAITranslator,
-                           OpenAITranslator, ZhipuTranslator, ModelScopeTranslator, SiliconTranslator, GeminiTranslator, AzureTranslator, TencentTranslator, DifyTranslator, AnythingLLMTranslator, ArgosTranslator, GrokTranslator, GroqTranslator, DeepseekTranslator, MiniMaxTranslator, OpenAIlikedTranslator, QwenMtTranslator, X302AITranslator]:
+                           OpenAITranslator, OpenAICodexTranslator, ZhipuTranslator, ModelScopeTranslator, SiliconTranslator, GeminiTranslator, AzureTranslator, TencentTranslator, DifyTranslator, AnythingLLMTranslator, ArgosTranslator, GrokTranslator, GroqTranslator, DeepseekTranslator, MiniMaxTranslator, OpenAIlikedTranslator, QwenMtTranslator, X302AITranslator]:
             if service_name == translator.name:
                 self.translator = translator(lang_in, lang_out, service_model, envs=envs, prompt=prompt, ignore_cache=ignore_cache)
         if not self.translator:
@@ -345,9 +374,27 @@ class TranslateConverter(PDFConverterEx):
         # B. 段落翻译
         log.debug("\n==========[SSTACK]==========\n")
 
+        skip_flags: list[bool] = []
+        for s in sstk:
+            stripped = s.strip()
+            if self.skip_references:
+                if REFERENCE_SECTION_RE.match(stripped):
+                    if not self._in_references:
+                        log.info(
+                            "Skipping translation for references/bibliography section"
+                        )
+                    self._in_references = True
+                elif self._in_references and APPENDIX_SECTION_RE.match(stripped):
+                    log.info(
+                        "Resuming translation at appendix/supplementary section"
+                    )
+                    self._in_references = False
+            skip_flags.append(bool(self.skip_references and self._in_references))
+
         @retry(wait=wait_fixed(1))
-        def worker(s: str):  # 多线程翻译
-            if not s.strip() or re.match(r"^\{v\d+\}$", s):  # 空白和公式不翻译
+        def worker(item: tuple[str, bool]):  # 多线程翻译
+            s, skip = item
+            if skip or not s.strip() or re.match(r"^\{v\d+\}$", s):  # 空白/公式/참고문헌
                 return s
             try:
                 new = self.translator.translate(s)
@@ -361,7 +408,7 @@ class TranslateConverter(PDFConverterEx):
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.thread
         ) as executor:
-            news = list(executor.map(worker, sstk))
+            news = list(executor.map(worker, zip(sstk, skip_flags)))
 
         ############################################################
         # C. 新文档排版

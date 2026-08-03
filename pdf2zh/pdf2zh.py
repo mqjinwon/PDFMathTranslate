@@ -82,8 +82,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--service",
         "-s",
         type=str,
-        default="google",
-        help="The service to use for translation.",
+        default="auto",
+        help=(
+            "Translation service. Default 'auto' tries in order: "
+            "Grok OAuth → OpenAI (Codex OAuth / API key) → Grok API key. "
+            "Or pass an explicit backend, e.g. grok, openai-codex, openai, google."
+        ),
     )
     parse_params.add_argument(
         "--output",
@@ -398,10 +402,6 @@ def yadt_main(parsed_args) -> int:
     yadt_init()
     font_path = download_remote_fonts(lang_out.lower())
 
-    param = parsed_args.service.split(":", 1)
-    service_name = param[0]
-    service_model = param[1] if len(param) > 1 else None
-
     envs = {}
     prompt = []
 
@@ -413,6 +413,7 @@ def yadt_main(parsed_args) -> int:
         except Exception:
             raise ValueError("prompt error.")
 
+    from pdf2zh.service_chain import resolve_service
     from pdf2zh.translator import (
         AzureOpenAITranslator,
         GoogleTranslator,
@@ -421,6 +422,7 @@ def yadt_main(parsed_args) -> int:
         DeepLXTranslator,
         OllamaTranslator,
         OpenAITranslator,
+        OpenAICodexTranslator,
         ZhipuTranslator,
         ModelScopeTranslator,
         SiliconTranslator,
@@ -439,6 +441,11 @@ def yadt_main(parsed_args) -> int:
         X302AITranslator,
     )
 
+    resolved = resolve_service(parsed_args.service, envs=envs)
+    service_name = resolved.name
+    service_model = resolved.model
+    envs = {**envs, **resolved.envs}
+
     for translator in [
         GoogleTranslator,
         BingTranslator,
@@ -448,6 +455,7 @@ def yadt_main(parsed_args) -> int:
         XinferenceTranslator,
         AzureOpenAITranslator,
         OpenAITranslator,
+        OpenAICodexTranslator,
         ZhipuTranslator,
         ModelScopeTranslator,
         SiliconTranslator,

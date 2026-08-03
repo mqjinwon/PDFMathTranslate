@@ -35,6 +35,7 @@ from pdf2zh.translator import (
     ModelScopeTranslator,
     OllamaTranslator,
     OpenAITranslator,
+    OpenAICodexTranslator,
     SiliconTranslator,
     TencentTranslator,
     XinferenceTranslator,
@@ -72,6 +73,9 @@ class _LazyModel:
 BABELDOC_MODEL = _LazyModel()
 # The following variables associate strings with translators
 service_map: dict[str, BaseTranslator] = {
+    "Grok": GrokTranslator,
+    "OpenAI Codex (OAuth)": OpenAICodexTranslator,
+    "OpenAI": OpenAITranslator,
     "Google": GoogleTranslator,
     "Bing": BingTranslator,
     "DeepL": DeepLTranslator,
@@ -79,7 +83,6 @@ service_map: dict[str, BaseTranslator] = {
     "Ollama": OllamaTranslator,
     "Xinference": XinferenceTranslator,
     "AzureOpenAI": AzureOpenAITranslator,
-    "OpenAI": OpenAITranslator,
     "Zhipu": ZhipuTranslator,
     "ModelScope": ModelScopeTranslator,
     "Silicon": SiliconTranslator,
@@ -89,7 +92,6 @@ service_map: dict[str, BaseTranslator] = {
     "Dify": DifyTranslator,
     "AnythingLLM": AnythingLLMTranslator,
     "Argos Translate": ArgosTranslator,
-    "Grok": GrokTranslator,
     "Groq": GroqTranslator,
     "DeepSeek": DeepseekTranslator,
     "MiniMax": MiniMaxTranslator,
@@ -140,7 +142,7 @@ if ConfigManager.get("PDF2ZH_DEMO"):
 # Limit Enabled Services
 enabled_services: T.Optional[T.List[str]] = ConfigManager.get("ENABLED_SERVICES")
 if isinstance(enabled_services, list):
-    default_services = ["Google", "Bing"]
+    default_services = ["Grok", "OpenAI Codex (OAuth)", "OpenAI"]
     enabled_services_names = [str(_).lower().strip() for _ in enabled_services]
     enabled_services = [
         k
@@ -412,6 +414,7 @@ def babeldoc_translate_file(**kwargs):
         XinferenceTranslator,
         AzureOpenAITranslator,
         OpenAITranslator,
+        OpenAICodexTranslator,
         ZhipuTranslator,
         ModelScopeTranslator,
         SiliconTranslator,

@@ -246,7 +246,15 @@ For docker deployment on cloud service:
 
 ### 4.1 Advanced options
 
-Execute the translation command in the command line to generate the translated document `example-mono.pdf` and the bilingual document `example-dual.pdf` in the current working directory. Use Google as the default translation service. More support translation services can find [HERE](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#services).
+Execute the translation command in the command line to generate the translated document `example-mono.pdf` and the bilingual document `example-dual.pdf` in the current working directory.
+
+**Default service is `auto`**, which picks the first available backend in this order:
+
+1. **Grok OAuth** — reuses `~/.grok/auth.json` from [Grok Build](https://grok.x.ai/) (`grok login`)
+2. **OpenAI** — Codex OAuth via `~/.codex/auth.json` (`codex login`), else `OPENAI_API_KEY`
+3. **Grok API** — `GROK_API_KEY` against `https://api.x.ai/v1`
+
+Pass `-s <service>` to force a backend (e.g. `-s google`, `-s openai-codex`, `-s grok`). More services: [ADVANCED.md](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#services).
 
 <img src="./docs/images/cmd.explained.png" width="580px"  alt="cmd"/>
 
