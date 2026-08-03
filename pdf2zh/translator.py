@@ -1145,7 +1145,7 @@ class GrokTranslator(OpenAITranslator):
     name = "grok"
     envs = {
         "GROK_API_KEY": None,
-        "GROK_MODEL": "grok-4.20-0309-non-reasoning",
+        "GROK_MODEL": "grok-4.5",
         "GROK_BASE_URL": "https://api.x.ai/v1",  # Configurable base URL
         "GROK_STREAM": "true",  # Configurable: set to "true" (default) or "false"
         "GROK_AUTH_PATH": "",  # empty → ~/.grok/auth.json
