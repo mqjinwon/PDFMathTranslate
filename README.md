@@ -55,6 +55,8 @@ Scientific PDF document translation preserving layouts.
 - 📊 Preserve formulas, charts, table of contents, and annotations.
 - 🌐 Support [multiple languages](#usage), and diverse [translation services](#usage).
 - 🤖 Provides [commandline tool](#usage), [interactive user interface](#install), and [Docker](#install)
+- 🔑 Reuse **Grok Build** / **OpenAI Codex** CLI logins (`grok login`, `codex login`) via `auto` or the web UI — no browser OAuth
+- 🎛️ Web UI: service picker (Auto / subscription / API), **GPT‑5.6 Luna·Terra·Sol** models, and **reasoning effort**
 
 <div align="center">
 <img src="./docs/images/preview.gif" width="80%"/>
@@ -62,6 +64,7 @@ Scientific PDF document translation preserving layouts.
 
 <h2 id="updates">2. Recent Updates</h2>
 
+- [August 2026] **Host subscription + web ops (this fork):** Gradio auth status for Grok/Codex CLI tokens; Auto / Grok (subscription) / OpenAI Codex (subscription) / API services; **Model** (GPT‑5.6 Luna / Terra / Sol, Grok 4.5) and **Reasoning effort** (low–max); Docker Compose mounts for `~/.grok` and `~/.codex`. See [docs/WEB_SERVER.md](./docs/WEB_SERVER.md).
 - [March 23, 2026] Experimental support for v2.0 translation kernel using isolated environment (`--mode precise`). (by [@reycn](https://github.com/reycn))
 - [March 22, 2026] Supporting MiniMax (PR by [@octo-patch](https://github.com/octo-patch))
 - [March 22, 2026] Fixing OpenAI-related issues (PR by [@samqin123](https://github.com/samqin123))
@@ -138,13 +141,20 @@ For different use cases, we provide distinct methods to use our program:
   pip install pdf2zh
   ```
 
-3. Start using in browser:
+3. (Optional) Log in once on the host so the GUI can reuse subscriptions:
 
    ```bash
-   pdf2zh -i
+   grok login    # writes ~/.grok/auth.json
+   codex login   # writes ~/.codex/auth.json
    ```
 
-4. If your browser has not been started automatically, goto
+4. Start using in browser:
+
+   ```bash
+   pdf2zh -i --serverport 7860
+   ```
+
+5. If your browser has not been started automatically, goto
 
    ```bash
    http://localhost:7860/
@@ -152,9 +162,16 @@ For different use cases, we provide distinct methods to use our program:
 
    <img src="./docs/images/gui.gif" width="500"/>
 
-See [documentation for GUI](./docs/README_GUI.md) for more details.
+In the web UI:
 
-Host Grok/Codex CLI subscription tokens, Docker mounts, and web ops: [docs/WEB_SERVER.md](./docs/WEB_SERVER.md).
+| Control | What it does |
+| ------- | ------------ |
+| **Subscription auth** | Host CLI status for Grok / OpenAI Codex (Refresh does **not** refresh tokens) |
+| **Service** | `Auto (recommended)` · `Grok (subscription)` · `OpenAI Codex (subscription)` · API-key variants · other backends |
+| **Model** | Codex/OpenAI: `gpt-5.6-luna` (default), `gpt-5.6-terra`, `gpt-5.6-sol` · Grok: `grok-4.5`, … · hidden for Auto |
+| **Reasoning effort** | OpenAI/Codex only: `low` · `medium` (default) · `high` · `xhigh` · `max` — prefer **medium** for translation volume |
+
+See [documentation for GUI](./docs/README_GUI.md) and the full runbook [docs/WEB_SERVER.md](./docs/WEB_SERVER.md) (Docker mounts, `--authorized`, security).
 
 </details>
 
@@ -255,11 +272,21 @@ Execute the translation command in the command line to generate the translated d
 
 **Default service is `auto`**, which picks the first available backend in this order:
 
-1. **Grok OAuth** — reuses `~/.grok/auth.json` from [Grok Build](https://grok.x.ai/) (`grok login`)
+1. **Grok OAuth** — reuses `~/.grok/auth.json` from [Grok Build](https://grok.x.ai/) (`grok login`); model default `grok-4.5`
 2. **OpenAI** — Codex OAuth via `~/.codex/auth.json` (`codex login`), else `OPENAI_API_KEY`
 3. **Grok API** — `GROK_API_KEY` against `https://api.x.ai/v1`
 
-Pass `-s <service>` to force a backend (e.g. `-s google`, `-s openai-codex`, `-s grok`). More services: [ADVANCED.md](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#services).
+**OpenAI / Codex defaults (this fork):** model `gpt-5.6-luna`, reasoning effort `medium`. Other GPT‑5.6 tiers: `gpt-5.6-terra`, `gpt-5.6-sol`. CLI examples:
+
+```bash
+pdf2zh paper.pdf -s auto
+pdf2zh paper.pdf -s openai-codex:gpt-5.6-terra
+pdf2zh paper.pdf -s grok:grok-4.5 -lo ko
+# Force Grok subscription path even if GROK_API_KEY is set:
+GROK_PREFER_OAUTH=1 pdf2zh paper.pdf -s grok
+```
+
+Env knobs: `OPENAI_CODEX_MODEL`, `OPENAI_CODEX_REASONING_EFFORT`, `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, `GROK_MODEL`. Full service table: [ADVANCED.md](./docs/ADVANCED.md#services). Web UI ops: [WEB_SERVER.md](./docs/WEB_SERVER.md).
 
 <img src="./docs/images/cmd.explained.png" width="580px"  alt="cmd"/>
 
@@ -273,7 +300,7 @@ In the following table, we list all advanced options for reference:
 | `-p`                  | [Partial document translation](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#partial) | `pdf2zh example.pdf -p 1`                      |
 | `-li`                 | [Source language](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#languages)            | `pdf2zh example.pdf -li en`                    |
 | `-lo`                 | [Target language](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#languages)            | `pdf2zh example.pdf -lo zh`                    |
-| `-s`                  | [Translation service](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#services)         | `pdf2zh example.pdf -s deepl`                  |
+| `-s`                  | [Translation service](./docs/ADVANCED.md#services) (`auto`, `openai-codex:gpt-5.6-luna`, `grok`, …)            | `pdf2zh example.pdf -s openai-codex`           |
 | `-t`                  | [Multi-threads](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#threads)                | `pdf2zh example.pdf -t 1`                      |
 | `-o`                  | Output dir                                                                                                    | `pdf2zh example.pdf -o output`                 |
 | `-f`, `-c`            | [Exceptions](https://github.com/Byaidu/PDFMathTranslate/blob/main/docs/ADVANCED.md#exceptions)                | `pdf2zh example.pdf -f "(MS.*)"`               |
@@ -293,7 +320,7 @@ In the following table, we list all advanced options for reference:
 | `--mcp`               | Enable MCP STDIO mode                                                                                         | `pdf2zh --mcp`                                 |
 | `--sse`               | Enable MCP SSE mode                                                                                           | `pdf2zh --mcp --sse`                           |
 
-For detailed explanations, please refer to our document about [Advanced Usage](./docs/ADVANCED.md) for a full list of each option. Web UI + host subscription auth ops: [docs/WEB_SERVER.md](./docs/WEB_SERVER.md).
+For detailed explanations, see [Advanced Usage](./docs/ADVANCED.md) (services, languages, cache) and [Web server + subscription auth](./docs/WEB_SERVER.md) (GUI auth panel, model/reasoning, Docker Compose mounts, security).
 
 <h3 id="downstream">4.2 Downstream Development</h3>
 For downstream applications, please refer to our document about [API Details](./docs/APIS.md) for further information about:
