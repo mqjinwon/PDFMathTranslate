@@ -15,12 +15,6 @@ import requests
 import xinference_client
 from azure.ai.translation.text import TextTranslationClient
 from azure.core.credentials import AzureKeyCredential
-from tencentcloud.common import credential
-from tencentcloud.tmt.v20180321.models import (
-    TextTranslateRequest,
-    TextTranslateResponse,
-)
-from tencentcloud.tmt.v20180321.tmt_client import TmtClient
 
 from pdf2zh.cache import TranslationCache
 from pdf2zh.config import ConfigManager
@@ -795,6 +789,7 @@ class AzureTranslator(BaseTranslator):
 
 class TencentTranslator(BaseTranslator):
     # https://github.com/TencentCloud/tencentcloud-sdk-python
+    # Lazy-import SDK so a broken tencentcloud install does not kill GUI/CLI startup.
     name = "tencent"
     envs = {
         "TENCENTCLOUD_SECRET_ID": None,
@@ -804,6 +799,10 @@ class TencentTranslator(BaseTranslator):
     def __init__(
         self, lang_in, lang_out, model, envs=None, ignore_cache=False, **kwargs
     ):
+        from tencentcloud.common import credential
+        from tencentcloud.tmt.v20180321.models import TextTranslateRequest
+        from tencentcloud.tmt.v20180321.tmt_client import TmtClient
+
         self.set_envs(envs)
         super().__init__(lang_in, lang_out, model)
         try:
@@ -824,7 +823,7 @@ class TencentTranslator(BaseTranslator):
 
     def _translate_chunk(self, text):
         self.req.SourceText = text
-        resp: TextTranslateResponse = self.client.TextTranslate(self.req)
+        resp = self.client.TextTranslate(self.req)
         return resp.TargetText
 
     def do_translate(self, text):

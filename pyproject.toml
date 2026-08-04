@@ -28,7 +28,8 @@ dependencies = [
     "onnx",
     "onnxruntime",
     "opencv-python-headless",
-    "tencentcloud-sdk-python-tmt",
+    # Newer 3.1.x drops TextTranslateRequest from models (breaks import at startup).
+    "tencentcloud-sdk-python-tmt==3.0.1200",
     "pdfminer-six==20250416",
     "gradio_pdf>=0.0.21",
     "pikepdf",

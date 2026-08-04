@@ -75,9 +75,12 @@ pdf2zh -i --serverport 7860 --authorized users.txt
 ```bash
 # From repo root; requires Docker + Compose
 mkdir -p data
-docker compose -f docker-compose.yml up --build
+# Rebuild after dependency pins (e.g. tencentcloud-sdk-python-tmt==3.0.1200)
+docker compose -f docker-compose.yml up --build -d
 # Open http://localhost:7860
 ```
+
+If the container crashes on import with `TextTranslateRequest` / `tencentcloud`, rebuild with `--build --no-cache` so the pinned SDK is installed.
 
 Compose mounts (see `docker-compose.yml`):
 
