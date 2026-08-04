@@ -39,11 +39,23 @@ services:
       # The UV_LINK_MODE warning happens during build, so we can set it there if needed,
       # but it's generally harmless.
 
-    command: ["pdf2zh", "-i"]
+    # Interactive Gradio web UI (do NOT enable --share here for public hosts)
+    command: ["pdf2zh", "-i", "--serverport", "7860"]
+    restart: unless-stopped
 
-    # Optional: Mount a volume for persistent data I/O if needed
-    # volumes:
-    #   - ./data:/app/data
+    volumes:
+      # Host CLI subscription tokens (rw so refresh can write back).
+      # If the image USER is not root, adjust mount targets (e.g. /home/user/.grok).
+      # Use :ro only if you never need token refresh write-back (breaks re-login flow).
+      - ${HOME}/.grok:/root/.grok
+      - ${HOME}/.codex:/root/.codex
+      - pdf2zh-config:/root/.config/PDFMathTranslate
+      - ./data:/data
+      # Optional app data I/O:
+      # - ./data:/app/data
 
     stdin_open: true
     tty: true
+
+volumes:
+  pdf2zh-config:

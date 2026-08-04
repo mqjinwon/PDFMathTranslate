@@ -154,6 +154,8 @@ For different use cases, we provide distinct methods to use our program:
 
 See [documentation for GUI](./docs/README_GUI.md) for more details.
 
+Host Grok/Codex CLI subscription tokens, Docker mounts, and web ops: [docs/WEB_SERVER.md](./docs/WEB_SERVER.md).
+
 </details>
 
 <details>
@@ -219,6 +221,9 @@ For docker deployment on cloud service:
 > docker pull ghcr.io/byaidu/pdfmathtranslate
 > docker run -d -p 7860:7860 ghcr.io/byaidu/pdfmathtranslate
 > ```
+>
+> - For host CLI OAuth mounts (`~/.grok`, `~/.codex`) via Compose, see [docs/WEB_SERVER.md](./docs/WEB_SERVER.md) and repo `docker-compose.yml`.
+
 </details>
 
 <details>
@@ -288,7 +293,7 @@ In the following table, we list all advanced options for reference:
 | `--mcp`               | Enable MCP STDIO mode                                                                                         | `pdf2zh --mcp`                                 |
 | `--sse`               | Enable MCP SSE mode                                                                                           | `pdf2zh --mcp --sse`                           |
 
-For detailed explanations, please refer to our document about [Advanced Usage](./docs/ADVANCED.md) for a full list of each option.
+For detailed explanations, please refer to our document about [Advanced Usage](./docs/ADVANCED.md) for a full list of each option. Web UI + host subscription auth ops: [docs/WEB_SERVER.md](./docs/WEB_SERVER.md).
 
 <h3 id="downstream">4.2 Downstream Development</h3>
 For downstream applications, please refer to our document about [API Details](./docs/APIS.md) for further information about:

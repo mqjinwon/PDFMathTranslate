@@ -11,6 +11,7 @@
 - [Multi-threads](#threads)
 - [Custom prompt](#prompt)
 - [Authorization](#auth)
+- [Web server + host subscription auth](./WEB_SERVER.md)
 - [Custom configuration file](#cofig)
 - [Fonts Subseting](#fonts-subset)
 - [Translation cache](#cache)
@@ -166,6 +167,14 @@ In custom prompt file, there are three variables can be used.
 |`lang_in`|input language|
 |`lang_out`|output language|
 |`text`|text need to be translated|
+
+[⬆️ Back to top](#toc)
+
+---
+
+<h3 id="web-server">Web server + host subscription auth</h3>
+
+For Gradio web UI (`pdf2zh -i`) with **Grok / OpenAI Codex CLI OAuth**, Docker volume mounts, security notes, and troubleshooting, see **[WEB_SERVER.md](./WEB_SERVER.md)**.
 
 [⬆️ Back to top](#toc)
 

@@ -16,10 +16,12 @@ from string import Template
 import logging
 
 from pdf2zh import __version__
+from pdf2zh.auth.status import AuthProviderStatus, all_auth_status
 from pdf2zh.high_level import translate
 from pdf2zh.doclayout import ModelInstance
 from pdf2zh.config import ConfigManager
-from pdf2zh.registry import build_translator, gui_service_map
+from pdf2zh.gui_services import SERVICE_CHOICES, resolve_gui_service
+from pdf2zh.registry import build_translator, get_translator_class, gui_service_map
 from pdf2zh.translator import BaseTranslator, OpenAITranslator
 from babeldoc.docvision.doclayout import OnnxModel
 from babeldoc import __version__ as babeldoc_version
@@ -45,8 +47,17 @@ class _LazyModel:
 
 
 BABELDOC_MODEL = _LazyModel()
-# Label → translator class (single registry under the hood)
+# Legacy label → class map (registry-backed; used for env schema of API services)
 service_map: dict[str, type[BaseTranslator]] = gui_service_map()
+
+# Labels that use host CLI OAuth (no API key textboxes by default)
+_SUBSCRIPTION_LABELS = frozenset(
+    {
+        "Auto (recommended)",
+        "Grok (subscription)",
+        "OpenAI Codex (subscription)",
+    }
+)
 
 # The following variables associate strings with specific languages
 lang_map = {
@@ -76,8 +87,6 @@ flag_demo = False
 # Limit resources
 if ConfigManager.get("PDF2ZH_DEMO"):
     flag_demo = True
-    from pdf2zh.registry import get_translator_class
-
     service_map = {
         "Google": get_translator_class("google"),
     }
@@ -89,21 +98,65 @@ if ConfigManager.get("PDF2ZH_DEMO"):
     server_key = ConfigManager.get("PDF2ZH_SERVER_KEY")
 
 
-# Limit Enabled Services
-enabled_services: T.Optional[T.List[str]] = ConfigManager.get("ENABLED_SERVICES")
-if isinstance(enabled_services, list):
-    default_services = ["Grok", "OpenAI Codex (OAuth)", "OpenAI"]
-    enabled_services_names = [str(_).lower().strip() for _ in enabled_services]
+def _format_auth_markdown(
+    statuses: dict[str, AuthProviderStatus] | None = None,
+) -> str:
+    """Human-readable host CLI subscription auth panel."""
+    if statuses is None:
+        statuses = all_auth_status()
+    lines = ["### Subscription auth (host CLI)"]
+    for key, title in (("grok", "Grok"), ("codex", "OpenAI Codex")):
+        s = statuses.get(key)
+        if s is None:
+            lines.append(f"- **{title}:** unknown")
+            continue
+        if s.state == "connected":
+            exp = f" (expires {s.expires_at})" if s.expires_at else ""
+            lines.append(f"- **{title}:** connected{exp}")
+        elif s.state == "expired":
+            lines.append(f"- **{title}:** expired — {s.hint}")
+        elif s.state == "missing":
+            lines.append(f"- **{title}:** missing — {s.hint}")
+        else:
+            lines.append(f"- **{title}:** error — {s.detail}")
+    return "\n".join(lines)
+
+
+def _class_for_service_spec(service_spec: str) -> type[BaseTranslator] | None:
+    """Return translator class for env schema; None for auto (no fixed envs)."""
+    if service_spec == "auto":
+        return None
+    try:
+        return get_translator_class(service_spec)
+    except ValueError:
+        return None
+
+
+# Limit Enabled Services (Gradio dropdown labels)
+_cfg_enabled: T.Optional[T.List[str]] = ConfigManager.get("ENABLED_SERVICES")
+if flag_demo:
+    enabled_services = ["Google"]
+elif isinstance(_cfg_enabled, list):
+    enabled_services_names = [str(_).lower().strip() for _ in _cfg_enabled]
     enabled_services = [
         k
-        for k in service_map.keys()
+        for k in SERVICE_CHOICES
         if str(k).lower().strip() in enabled_services_names
+        or resolve_gui_service(k)[0] in enabled_services_names
     ]
+    # Always keep Auto / subscription defaults first when filtering
+    defaults = [
+        "Auto (recommended)",
+        "Grok (subscription)",
+        "OpenAI Codex (subscription)",
+    ]
+    for d in reversed(defaults):
+        if d in SERVICE_CHOICES and d not in enabled_services:
+            enabled_services.insert(0, d)
     if len(enabled_services) == 0:
         raise RuntimeError("No services available.")
-    enabled_services = default_services + enabled_services
 else:
-    enabled_services = list(service_map.keys())
+    enabled_services = list(SERVICE_CHOICES)
 
 
 # Configure about Gradio show keys
@@ -247,7 +300,22 @@ def translate_file(
     file_mono = output / f"{filename}-mono.pdf"
     file_dual = output / f"{filename}-dual.pdf"
 
-    translator = service_map[service]
+    # UI label → backend service_spec + process-local OAuth envs
+    service_spec, oauth_envs = resolve_gui_service(service)
+    translator_cls = _class_for_service_spec(service_spec)
+
+    # Soft guard: warn if subscription backend looks unavailable (still allow Auto fallthrough)
+    if not flag_demo and service_spec in ("auto", "grok", "openai-codex"):
+        statuses = all_auth_status()
+        if service_spec in ("auto", "grok"):
+            gs = statuses.get("grok")
+            if gs and gs.state in ("missing", "expired") and service_spec == "grok":
+                gr.Warning(f"Grok subscription: {gs.state} — {gs.hint}")
+        if service_spec in ("auto", "openai-codex"):
+            cs = statuses.get("codex")
+            if cs and cs.state in ("missing", "expired") and service_spec == "openai-codex":
+                gr.Warning(f"OpenAI Codex: {cs.state} — {cs.hint}")
+
     if page_range != "Others":
         selected_page = page_map[page_range]
     else:
@@ -261,16 +329,20 @@ def translate_file(
     lang_from = lang_map[lang_from]
     lang_to = lang_map[lang_to]
 
-    _envs = {}
-    for i, env in enumerate(translator.envs.items()):
-        _envs[env[0]] = envs[i]
-    for k, v in _envs.items():
-        if str(k).upper().endswith("API_KEY") and str(v) == "***":
-            # Load Real API_KEYs from local configure file
-            real_keys: str = ConfigManager.get_env_by_translatername(
-                translator, k, None
-            )
-            _envs[k] = real_keys
+    _envs: dict = {}
+    if translator_cls is not None:
+        for i, env in enumerate(translator_cls.envs.items()):
+            if i < len(envs):
+                _envs[env[0]] = envs[i]
+        for k, v in list(_envs.items()):
+            if str(k).upper().endswith("API_KEY") and str(v) == "***":
+                # Load Real API_KEYs from local configure file
+                real_keys: str = ConfigManager.get_env_by_translatername(
+                    translator_cls, k, None
+                )
+                _envs[k] = real_keys
+    # Subscription prefer-oauth etc. must win over blank UI fields
+    _envs = {**_envs, **oauth_envs}
 
     print(f"Files before translation: {os.listdir(output)}")
 
@@ -290,7 +362,7 @@ def translate_file(
         "pages": selected_page,
         "lang_in": lang_from,
         "lang_out": lang_to,
-        "service": f"{translator.name}",
+        "service": service_spec,
         "output": output,
         "thread": int(threads),
         "callback": progress_bar,
@@ -315,7 +387,7 @@ def translate_file(
             pages=selected_page,
             lang_in=lang_from,
             lang_out=lang_to,
-            service=f"{translator.name}",
+            service=service_spec,
             thread=int(threads),
             envs=_envs,
             prompt=str(prompt) if prompt else None,
@@ -502,6 +574,13 @@ with gr.Blocks(
 
     with gr.Row():
         with gr.Column(scale=1):
+            if not flag_demo:
+                auth_md = gr.Markdown(value=_format_auth_markdown())
+                refresh_auth_btn = gr.Button("Refresh auth status", size="sm")
+                refresh_auth_btn.click(
+                    fn=lambda: _format_auth_markdown(all_auth_status()),
+                    outputs=auth_md,
+                )
             gr.Markdown("## File | < 5 MB" if flag_demo else "## File")
             file_type = gr.Radio(
                 choices=["File", "Link"],
@@ -585,15 +664,28 @@ with gr.Blocks(
                 envs.append(prompt)
 
             def on_select_service(service, evt: gr.EventData):
-                translator = service_map[service]
-                _envs = []
-                for i in range(4):
-                    _envs.append(gr.update(visible=False, value=""))
+                """Show env fields for API services; hide keys for Auto/subscription."""
+                _envs = [gr.update(visible=False, value="") for _ in range(4)]
+                service_spec, _oauth = resolve_gui_service(service)
+                translator = _class_for_service_spec(service_spec)
+                if translator is None:
+                    # Auto: no fixed env schema
+                    return _envs
+
+                subscription = service in _SUBSCRIPTION_LABELS
                 for i, env in enumerate(translator.envs.items()):
+                    if i >= 3:
+                        break
                     label = env[0]
                     value = ConfigManager.get_env_by_translatername(
                         translator, env[0], env[1]
                     )
+                    # Hide API keys / prefer-oauth internals for subscription labels
+                    is_secret = "API_KEY" in str(label).upper()
+                    is_prefer = "PREFER_OAUTH" in str(label).upper()
+                    if subscription and (is_secret or is_prefer):
+                        _envs[i] = gr.update(visible=False, value="")
+                        continue
                     visible = True
                     if hidden_gradio_details:
                         if (
@@ -602,15 +694,14 @@ with gr.Blocks(
                             and hidden_gradio_details
                         ):
                             visible = False
-                        # Hidden Keys From Gradio
-                        if "API_KEY" in label.upper():
+                        if is_secret:
                             value = "***"  # We use "***" Present Real API_KEY
                     _envs[i] = gr.update(
                         visible=visible,
                         label=label,
-                        value=value,
+                        value=value if value is not None else "",
                     )
-                _envs[-1] = gr.update(visible=translator.CustomPrompt)
+                _envs[-1] = gr.update(visible=bool(translator.CustomPrompt))
                 return _envs
 
             def on_select_filetype(file_type):
