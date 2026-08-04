@@ -437,7 +437,8 @@ class OpenAITranslator(BaseTranslator):
     envs = {
         "OPENAI_BASE_URL": "https://api.openai.com/v1",
         "OPENAI_API_KEY": None,
-        "OPENAI_MODEL": "gpt-4o-mini",
+        "OPENAI_MODEL": "gpt-5.6-luna",
+        "OPENAI_REASONING_EFFORT": "medium",
         "OPENAI_STREAM": "true",  # Configurable: set to "true" (default) or "false"
         "OPENAI_STOP_TOKENS": "",  # Space separated list of stop tokens
         "OPENAI_MAX_TOKENS": -1,  # Specify -1 to call the API without setting max_tokens
@@ -478,6 +479,11 @@ class OpenAITranslator(BaseTranslator):
             self.options["stop"] = stop_tokens
         if max_tokens > 0:
             self.options["max_tokens"] = max_tokens
+        effort = (self.envs.get("OPENAI_REASONING_EFFORT") or "").strip().lower()
+        self.reasoning_effort = effort or None
+        if self.reasoning_effort:
+            # GPT-5.x chat completions accept reasoning_effort when supported.
+            self.options["reasoning_effort"] = self.reasoning_effort
         self.client = openai.OpenAI(
             base_url=base_url or self.envs["OPENAI_BASE_URL"],
             api_key=api_key or self.envs["OPENAI_API_KEY"],
@@ -487,6 +493,7 @@ class OpenAITranslator(BaseTranslator):
         self.add_cache_impact_parameters("stop", self.options.get("stop"))
         self.add_cache_impact_parameters("max_tokens", self.options.get("max_tokens"))
         self.add_cache_impact_parameters("prompt", self.prompt("", self.prompttext))
+        self.add_cache_impact_parameters("reasoning_effort", self.reasoning_effort)
         think_filter_regex = r"^<think>.+?\n*(</think>|\n)*(</think>)\n*"
         self.add_cache_impact_parameters("think_filter_regex", think_filter_regex)
         self.think_filter_regex = re.compile(think_filter_regex, flags=re.DOTALL)

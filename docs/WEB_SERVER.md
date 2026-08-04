@@ -47,10 +47,15 @@ In the UI:
 1. Check **Subscription auth (host CLI)** panel (Grok / OpenAI Codex).
 2. Click **Refresh auth status** after re-login (status does **not** call token refresh APIs).
 3. Choose **Service**:
-   - **Auto (recommended)** — Grok OAuth → Codex OAuth / OpenAI API → Grok API
+   - **Auto (recommended)** — Grok OAuth → Codex OAuth / OpenAI API → Grok API (model = backend default)
    - **Grok (subscription)** — forces OAuth via `GROK_PREFER_OAUTH=1` (process-local only)
    - **OpenAI Codex (subscription)** — Codex Responses API
    - **Grok (API key)** / **OpenAI (API key)** — key fields as usual
+4. Choose **Model** (when visible):
+   - Codex / OpenAI API: `gpt-5.6-luna` (default), `gpt-5.6-terra`, `gpt-5.6-sol`
+   - Grok: `grok-4.5` (default), `grok-4`, `grok-3-mini`
+5. Choose **Reasoning effort** (OpenAI / Codex only): `low` · `medium` (default) · `high` · `xhigh` · `max`  
+   Prefer **medium** for translation volume; Sol + high/max is slow and expensive.
 
 ---
 

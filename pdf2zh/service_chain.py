@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Default chat model for Grok (latest general chat model on api.x.ai).
 DEFAULT_GROK_OAUTH_MODEL = "grok-4.5"
 DEFAULT_GROK_API_MODEL = "grok-4.5"
-DEFAULT_OPENAI_CODEX_MODEL = "gpt-5.4"
+DEFAULT_OPENAI_CODEX_MODEL = "gpt-5.6-luna"
 
 AUTO_ALIASES = frozenset({"", "auto", "default"})
 

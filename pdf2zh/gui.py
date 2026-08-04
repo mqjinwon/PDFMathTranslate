@@ -20,6 +20,12 @@ from pdf2zh.auth.status import AuthProviderStatus, all_auth_status
 from pdf2zh.high_level import translate
 from pdf2zh.doclayout import ModelInstance
 from pdf2zh.config import ConfigManager
+from pdf2zh.gui_models import (
+    apply_model_reasoning_envs,
+    model_dropdown_visible,
+    ui_model_updates,
+    ui_reasoning_updates,
+)
 from pdf2zh.gui_services import SERVICE_CHOICES, resolve_gui_service
 from pdf2zh.registry import build_translator, get_translator_class, gui_service_map
 from pdf2zh.translator import BaseTranslator, OpenAITranslator
@@ -228,6 +234,8 @@ def translate_file(
     file_input,
     link_input,
     service,
+    model_choice,
+    reasoning_effort,
     lang_from,
     lang_to,
     page_range,
@@ -343,6 +351,11 @@ def translate_file(
                 _envs[k] = real_keys
     # Subscription prefer-oauth etc. must win over blank UI fields
     _envs = {**_envs, **oauth_envs}
+    # Dedicated model / reasoning dropdowns (skip Auto backend-default)
+    model_envs = apply_model_reasoning_envs(
+        service_spec, model_choice, reasoning_effort
+    )
+    _envs = {**_envs, **model_envs}
 
     print(f"Files before translation: {os.listdir(output)}")
 
@@ -605,6 +618,24 @@ with gr.Blocks(
                 choices=enabled_services,
                 value=enabled_services[0],
             )
+            _init_spec, _ = resolve_gui_service(enabled_services[0])
+            _init_model_ui = ui_model_updates(_init_spec)
+            _init_reason_ui = ui_reasoning_updates(_init_spec)
+            model_choice = gr.Dropdown(
+                label="Model",
+                choices=_init_model_ui["choices"],
+                value=_init_model_ui["value"],
+                visible=_init_model_ui["visible"],
+                interactive=True,
+            )
+            reasoning_effort = gr.Dropdown(
+                label="Reasoning effort",
+                choices=_init_reason_ui["choices"],
+                value=_init_reason_ui["value"],
+                visible=_init_reason_ui["visible"],
+                interactive=True,
+                info="OpenAI/Codex only. Prefer medium for translation; high+ is slower.",
+            )
             envs = []
             for i in range(3):
                 envs.append(
@@ -664,15 +695,21 @@ with gr.Blocks(
                 envs.append(prompt)
 
             def on_select_service(service, evt: gr.EventData):
-                """Show env fields for API services; hide keys for Auto/subscription."""
+                """Show env fields for API services; hide keys for Auto/subscription.
+
+                Also refresh dedicated Model / Reasoning dropdowns.
+                """
                 _envs = [gr.update(visible=False, value="") for _ in range(4)]
                 service_spec, _oauth = resolve_gui_service(service)
+                model_upd = gr.update(**ui_model_updates(service_spec))
+                reason_upd = gr.update(**ui_reasoning_updates(service_spec))
                 translator = _class_for_service_spec(service_spec)
                 if translator is None:
-                    # Auto: no fixed env schema
-                    return _envs
+                    # Auto: no fixed env schema; model/reasoning use backend default
+                    return [*_envs, model_upd, reason_upd]
 
                 subscription = service in _SUBSCRIPTION_LABELS
+                dedicated_model = model_dropdown_visible(service_spec)
                 for i, env in enumerate(translator.envs.items()):
                     if i >= 3:
                         break
@@ -680,10 +717,18 @@ with gr.Blocks(
                     value = ConfigManager.get_env_by_translatername(
                         translator, env[0], env[1]
                     )
-                    # Hide API keys / prefer-oauth internals for subscription labels
                     is_secret = "API_KEY" in str(label).upper()
                     is_prefer = "PREFER_OAUTH" in str(label).upper()
+                    is_model = "MODEL" in str(label).upper() and "BASE" not in str(
+                        label
+                    ).upper()
+                    is_reasoning = "REASONING" in str(label).upper()
+                    # Hide secrets / prefer-oauth for subscription; hide model/reasoning
+                    # env textboxes when dedicated dropdowns are shown.
                     if subscription and (is_secret or is_prefer):
+                        _envs[i] = gr.update(visible=False, value="")
+                        continue
+                    if dedicated_model and (is_model or is_reasoning):
                         _envs[i] = gr.update(visible=False, value="")
                         continue
                     visible = True
@@ -702,7 +747,7 @@ with gr.Blocks(
                         value=value if value is not None else "",
                     )
                 _envs[-1] = gr.update(visible=bool(translator.CustomPrompt))
-                return _envs
+                return [*_envs, model_upd, reason_upd]
 
             def on_select_filetype(file_type):
                 return (
@@ -741,7 +786,7 @@ with gr.Blocks(
             service.select(
                 on_select_service,
                 service,
-                envs,
+                [*envs, model_choice, reasoning_effort],
             )
             vfont.change(on_vfont_change, inputs=vfont, outputs=None)
             file_type.select(
@@ -800,6 +845,8 @@ with gr.Blocks(
             file_input,
             link_input,
             service,
+            model_choice,
+            reasoning_effort,
             lang_from,
             lang_to,
             page_range,

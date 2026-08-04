@@ -23,7 +23,8 @@ class OpenAICodexTranslator(BaseTranslator):
 
     name = "openai-codex"
     envs = {
-        "OPENAI_CODEX_MODEL": "gpt-5.4",
+        "OPENAI_CODEX_MODEL": "gpt-5.6-luna",
+        "OPENAI_CODEX_REASONING_EFFORT": "medium",
         "OPENAI_CODEX_AUTH_PATH": "",  # empty → ~/.codex/auth.json
     }
     CustomPrompt = True
@@ -39,11 +40,14 @@ class OpenAICodexTranslator(BaseTranslator):
     ):
         self.set_envs(envs)
         if not model:
-            model = self.envs.get("OPENAI_CODEX_MODEL") or "gpt-5.4"
+            model = self.envs.get("OPENAI_CODEX_MODEL") or "gpt-5.6-luna"
         super().__init__(lang_in, lang_out, model, ignore_cache)
         self.prompttext = prompt
+        effort = (self.envs.get("OPENAI_CODEX_REASONING_EFFORT") or "medium").strip()
+        self.reasoning_effort = effort.lower() if effort else "medium"
         self.add_cache_impact_parameters("prompt", self.prompt("", self.prompttext))
         self.add_cache_impact_parameters("transport", "codex-responses")
+        self.add_cache_impact_parameters("reasoning_effort", self.reasoning_effort)
         auth_path = (self.envs.get("OPENAI_CODEX_AUTH_PATH") or "").strip()
         self._auth_path = Path(auth_path) if auth_path else None
 
@@ -99,13 +103,17 @@ class OpenAICodexTranslator(BaseTranslator):
             "input": input_items,
             "text": {"verbosity": "low"},
         }
+        if self.reasoning_effort:
+            body["reasoning"] = {"effort": self.reasoning_effort}
         headers = self._auth_headers()
+        # Longer timeout for high/max reasoning on large paragraphs
+        timeout = 300 if self.reasoning_effort in {"high", "xhigh", "max"} else 120
         with requests.post(
             CODEX_RESPONSES_URL,
             headers=headers,
             json=body,
             stream=True,
-            timeout=120,
+            timeout=timeout,
         ) as resp:
             if resp.status_code != 200:
                 raise ValueError(

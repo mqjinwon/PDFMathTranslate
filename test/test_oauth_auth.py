@@ -257,11 +257,16 @@ class TestOpenAICodexTranslator(unittest.TestCase):
         translator = OpenAICodexTranslator(
             "en",
             "ko",
-            "gpt-5.4",
-            envs={"OPENAI_CODEX_AUTH_PATH": str(self.auth_path)},
+            "gpt-5.6-luna",
+            envs={
+                "OPENAI_CODEX_AUTH_PATH": str(self.auth_path),
+                "OPENAI_CODEX_REASONING_EFFORT": "medium",
+            },
             ignore_cache=True,
         )
-        with mock.patch("pdf2zh.translator.requests.post", return_value=FakeResp()) as post:
+        with mock.patch(
+            "pdf2zh.openai_codex.requests.post", return_value=FakeResp()
+        ) as post:
             out = translator.do_translate("Hello")
         self.assertEqual(out, "안녕하세요")
         args, kwargs = post.call_args
@@ -270,7 +275,8 @@ class TestOpenAICodexTranslator(unittest.TestCase):
         )
         self.assertEqual(kwargs["headers"]["chatgpt-account-id"], "acct-1")
         self.assertTrue(kwargs["headers"]["Authorization"].startswith("Bearer "))
-        self.assertEqual(kwargs["json"]["model"], "gpt-5.4")
+        self.assertEqual(kwargs["json"]["model"], "gpt-5.6-luna")
+        self.assertEqual(kwargs["json"]["reasoning"], {"effort": "medium"})
         self.assertTrue(kwargs["stream"])
 
 
